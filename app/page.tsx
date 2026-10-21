@@ -1,23 +1,24 @@
-import { getMarketOverview } from "@/lib/market";
+"use client";
 
-export type DashboardPayload = {
+import { useEffect, useMemo, useState } from "react";
+
+type SignalItem = {
+  symbol: string;
+  price: number;
+  changePercent: number;
+  signal: string;
+  trend: string;
+  bias: string;
+  confidence: number;
+  rsi: number;
+  ema9: number;
+  ema21: number;
+};
+
+type DashboardData = {
   generatedAt: string;
   marketSummary: string;
-  marketOverview: Array<{
-    symbol: string;
-    price: number;
-    changePercent: number;
-    volume: number;
-    high: number;
-    low: number;
-    signal: string;
-    trend: string;
-    bias: string;
-    confidence: number;
-    rsi: number;
-    ema9: number;
-    ema21: number;
-  }>;
+  marketOverview: SignalItem[];
   ai: {
     provider: string;
     summary: string;
@@ -26,174 +27,305 @@ export type DashboardPayload = {
   };
   portfolio: {
     totalValue: number;
-    allocations: Array<{
-      symbol: string;
-      weight: number;
-      value: number;
-      color: string;
-    }>;
+    allocations: { symbol: string; weight: number; value: number; color: string }[];
   };
 };
 
-function buildTradePlan(marketOverview: DashboardPayload["marketOverview"]) {
-  return marketOverview.map((item) => {
-    if (item.signal === "COMPRA") {
-      return `Priorizar entrada em ${item.symbol} com confirmação do suporte local e gestão de risco em 1,5% do portfólio.`;
-    }
-    if (item.signal === "VENDA") {
-      return `Reduzir exposição em ${item.symbol} e manter estratégia defensiva até reverter o impulso.`;
-    }
-    return `Monitorar ${item.symbol} com movimento lateral e aguardar breakout para confirmar tendência.`;
-  });
-}
+const currency = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+});
 
-function composeLocalSummary(marketOverview: DashboardPayload["marketOverview"]) {
-  const buySignals = marketOverview.filter((item) => item.signal === "COMPRA").length;
-  const sellSignals = marketOverview.filter((item) => item.signal === "VENDA").length;
-  const avgConfidence = marketOverview.reduce((total, item) => total + item.confidence, 0) / Math.max(marketOverview.length, 1);
+export default function TradingDashboard() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [watchlist, setWatchlist] = useState<string[]>([]);
 
-  return {
-    provider: "local",
-    summary: `O mercado está com ${buySignals} sinais de compra e ${sellSignals} de venda. A inteligência técnica confirma que os ativos de maior liquidez continuam com força e a confiança média da estratégia está em ${avgConfidence.toFixed(0)}%.`,
-    confidence: Number(avgConfidence.toFixed(0)),
-  };
-}
-
-async function askAiForSummary(marketOverview: DashboardPayload["marketOverview"]) {
-  const openAiKey = process.env.OPENAI_API_KEY;
-  const groqKey = process.env.GROQ_API_KEY;
-
-  if (openAiKey) {
+  async function loadData() {
+    setLoading(true);
+    setError(null);
     try {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openAiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          temperature: 0.4,
-          messages: [
-            {
-              role: "system",
-              content: "Você é um analista de mercado profissional e responde em português. Seja objetivo, técnico e acionável.",
-            },
-            {
-              role: "user",
-              content: JSON.stringify(marketOverview),
-            },
-          ],
-        }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        const text = result.choices?.[0]?.message?.content;
-        if (text) {
-          return {
-            provider: "openai",
-            summary: text,
-            confidence: 79,
-          };
-        }
+      const response = await fetch("/api/signal", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Não foi possível carregar os sinais.");
       }
-    } catch (error) {
-      console.error("OpenAI falhou:", error);
+
+      const json = await response.json();
+      setData(json);
+    } catch (err) {
+      console.error(err);
+      setError("Falha ao carregar o painel. Tente novamente em alguns segundos.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  if (groqKey) {
+  useEffect(() => {
+    loadData();
     try {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${groqKey}`,
-        },
-        body: JSON.stringify({
-          model: "llama-3.1-8b-instant",
-          temperature: 0.4,
-          messages: [
-            {
-              role: "system",
-              content: "Você é um analista de mercado profissional. Responda em português e mencione risco, tendência, timing e alocação.",
-            },
-            {
-              role: "user",
-              content: JSON.stringify(marketOverview),
-            },
-          ],
-        }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        const text = result.choices?.[0]?.message?.content;
-        if (text) {
-          return {
-            provider: "groq",
-            summary: text,
-            confidence: 77,
-          };
-        }
+      const saved = window.localStorage.getItem("trader-watchlist");
+      if (saved) {
+        setWatchlist(JSON.parse(saved));
       }
-    } catch (error) {
-      console.error("Groq falhou:", error);
+    } catch {
+      setWatchlist([]);
     }
-  }
+  }, []);
 
-  return composeLocalSummary(marketOverview);
-}
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("trader-watchlist", JSON.stringify(watchlist));
+    }
+  }, [watchlist]);
 
-export async function buildDashboardPayload(): Promise<DashboardPayload> {
-  const market = await getMarketOverview();
-  const marketOverview = market.marketOverview;
-
-  if (!marketOverview.length) {
-    return {
-      generatedAt: market.generatedAt,
-      marketSummary: "Sem dados de mercado disponíveis no momento.",
-      marketOverview: [],
-      ai: {
-        provider: "local",
-        summary: "Não foi possível carregar dados do mercado. Tente novamente em alguns instantes.",
-        confidence: 0,
-        tradePlan: ["Verificar conectividade com a API de mercado.", "Validar símbolos ativos e rede.", "Recarregar painel quando a API estiver disponível."],
-      },
-      portfolio: {
-        totalValue: Number(process.env.PORTFOLIO_CASH_USD || "50000"),
-        allocations: [],
-      },
-    };
-  }
-
-  const portfolioValue = Number(process.env.PORTFOLIO_CASH_USD || "50000");
-  const weights = [0.45, 0.35, 0.2];
-  const colors = ["#22d3ee", "#a78bfa", "#34d399"];
-
-  const allocations = marketOverview.slice(0, 3).map((item, index) => ({
-    symbol: item.symbol,
-    weight: Number((weights[index] * 100).toFixed(1)),
-    value: Number((portfolioValue * weights[index]).toFixed(2)),
-    color: colors[index] ?? "#22d3ee",
-  }));
-
-  const aiContext = await askAiForSummary(marketOverview);
-
-  return {
-    generatedAt: market.generatedAt,
-    marketSummary: market.marketSummary,
-    marketOverview,
-    ai: {
-      provider: aiContext.provider,
-      summary: aiContext.summary,
-      confidence: aiContext.confidence,
-      tradePlan: buildTradePlan(marketOverview).slice(0, 3),
-    },
-    portfolio: {
-      totalValue: portfolioValue,
-      allocations,
-    },
+  const toggleWatchlist = (symbol: string) => {
+    setWatchlist((current) =>
+      current.includes(symbol) ? current.filter((item) => item !== symbol) : [...current, symbol]
+    );
   };
+
+  const riskState = useMemo(() => {
+    if (!data || !data.marketOverview.length) return "-";
+    const avgConfidence = data.marketOverview.reduce((sum, item) => sum + item.confidence, 0) / data.marketOverview.length;
+    if (avgConfidence >= 70) return "Alta";
+    if (avgConfidence >= 55) return "Moderada";
+    return "Baixa";
+  }, [data]);
+
+  return (
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,#0f172a_0%,#020817_35%,#020617_100%)] text-slate-50">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <header className="mb-8 flex flex-col gap-4 border-b border-slate-800 pb-6 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.28em] text-cyan-400">TRADER SIGNALS IA</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Dashboard de execução inteligente</h1>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => loadData()}
+              className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-200 transition hover:bg-cyan-500/20"
+            >
+              {loading ? "Atualizando..." : "Atualizar dados"}
+            </button>
+            {data && (
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+                {new Date(data.generatedAt).toLocaleString("pt-BR")} • Feed em tempo real
+              </div>
+            )}
+          </div>
+        </header>
+
+        {error && (
+          <div className="mb-6 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            {error}
+          </div>
+        )}
+
+        {!loading && !data ? (
+          <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 text-center text-slate-300">
+            Nenhum dado disponível no momento.
+          </div>
+        ) : null}
+
+        {data && (
+          <>
+            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {[
+                { label: "Carteira total", value: currency.format(data.portfolio.totalValue), tone: "cyan" },
+                { label: "Risco detectado", value: riskState, tone: "amber" },
+                { label: "Ativos em tendência", value: data.marketOverview.filter((item) => item.trend === "Alta").length.toString(), tone: "emerald" },
+                { label: "Provider IA", value: data.ai.provider.toUpperCase(), tone: "violet" },
+              ].map((item) => (
+                <div key={item.label} className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-lg shadow-slate-950/30">
+                  <div className="text-xs uppercase tracking-[0.2em] text-slate-400">{item.label}</div>
+                  <div className={`mt-4 text-3xl font-black ${item.tone === "cyan" ? "text-cyan-300" : item.tone === "amber" ? "text-amber-300" : item.tone === "emerald" ? "text-emerald-300" : "text-violet-300"}`}>
+                    {item.value}
+                  </div>
+                </div>
+              ))}
+            </section>
+
+            <section className="mt-8 grid gap-6 xl:grid-cols-[1.55fr_1fr]">
+              <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 shadow-2xl shadow-slate-950/30">
+                <div className="mb-5 flex items-center justify-between">
+                  <h2 className="text-xl font-bold">Sinais de mercado</h2>
+                  <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-xs font-medium text-cyan-300">
+                    {data.marketOverview.length} ativos
+                  </span>
+                </div>
+
+                <div className="overflow-hidden rounded-2xl border border-slate-800">
+                  <table className="min-w-full divide-y divide-slate-800">
+                    <thead className="bg-slate-950/70 text-left text-xs uppercase tracking-[0.18em] text-slate-400">
+                      <tr>
+                        <th className="px-4 py-3">Ativo</th>
+                        <th className="px-4 py-3">Preço</th>
+                        <th className="px-4 py-3">24h</th>
+                        <th className="px-4 py-3">RSI</th>
+                        <th className="px-4 py-3">Sinal</th>
+                        <th className="px-4 py-3 text-right">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800 bg-slate-900/60">
+                      {data.marketOverview.map((item) => (
+                        <tr key={item.symbol} className="transition hover:bg-slate-800/60">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="h-2.5 w-2.5 rounded-full bg-cyan-400" />
+                              <div>
+                                <div className="font-semibold text-slate-100">{item.symbol}</div>
+                                <div className="text-xs text-slate-400">{item.trend} • {item.bias}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 font-medium text-slate-100">{currency.format(item.price)}</td>
+                          <td className={`px-4 py-3 font-semibold ${item.changePercent >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                            {item.changePercent >= 0 ? "+" : ""}{item.changePercent.toFixed(2)}%
+                          </td>
+                          <td className="px-4 py-3 text-slate-200">{item.rsi.toFixed(1)}</td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${
+                                item.signal === "COMPRA"
+                                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                                  : item.signal === "VENDA"
+                                    ? "border-rose-500/40 bg-rose-500/10 text-rose-300"
+                                    : "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                              }`}
+                            >
+                              {item.signal}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => toggleWatchlist(item.symbol)}
+                              className={`rounded-lg border px-2 py-1 text-xs font-medium ${
+                                watchlist.includes(item.symbol)
+                                  ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+                                  : "border-slate-700 bg-slate-800 text-slate-200"
+                              }`}
+                            >
+                              {watchlist.includes(item.symbol) ? "Salvo" : "Salvar"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <aside className="space-y-6">
+                <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-slate-950/30">
+                  <h2 className="text-xl font-bold">Estratégia IA</h2>
+                  <div className="mt-4 rounded-2xl border border-violet-500/30 bg-violet-500/10 p-4">
+                    <div className="text-xs uppercase tracking-[0.18em] text-violet-300">Confiança</div>
+                    <div className="mt-2 text-3xl font-black text-violet-200">{data.ai.confidence.toFixed(0)}%</div>
+                  </div>
+                  <p className="mt-4 text-sm leading-7 text-slate-300">{data.ai.summary}</p>
+                </div>
+
+                <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-slate-950/30">
+                  <h2 className="text-xl font-bold">Plano de execução</h2>
+                  <ul className="mt-4 space-y-3">
+                    {data.ai.tradePlan.map((step, index) => (
+                      <li key={`${step}-${index}`} className="flex gap-3 text-sm text-slate-300">
+                        <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500/15 text-xs font-bold text-cyan-300">
+                          {index + 1}
+                        </span>
+                        <span>{step}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </aside>
+            </section>
+
+            <section className="mt-8 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 shadow-2xl shadow-slate-950/30">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-xl font-bold">Distribuição da carteira</h2>
+                  <span className="text-sm text-slate-400">Alocação por peso</span>
+                </div>
+
+                <div className="space-y-4">
+                  {data.portfolio.allocations.map((allocation) => (
+                    <div key={allocation.symbol}>
+                      <div className="mb-2 flex items-center justify-between text-sm text-slate-300">
+                        <span>{allocation.symbol}</span>
+                        <span>{allocation.weight.toFixed(1)}%</span>
+                      </div>
+                      <div className="h-2.5 overflow-hidden rounded-full bg-slate-800">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${allocation.weight}%`, background: allocation.color }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 shadow-2xl shadow-slate-950/30">
+                <h2 className="text-xl font-bold">Resumo do mercado</h2>
+                <p className="mt-4 text-sm leading-7 text-slate-300">{data.marketSummary}</p>
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  {data.marketOverview.map((item) => (
+                    <div key={item.symbol} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+                      <div className="text-xs uppercase tracking-[0.14em] text-slate-400">{item.symbol}</div>
+                      <div className="mt-2 text-lg font-bold text-slate-100">{currency.format(item.price)}</div>
+                      <div className={`mt-1 text-sm font-semibold ${item.changePercent >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                        {item.changePercent >= 0 ? "+" : ""}{item.changePercent.toFixed(2)}%
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900/70 p-5 shadow-2xl shadow-slate-950/30">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-xl font-bold">Watchlist</h2>
+                <span className="text-sm text-slate-400">{watchlist.length} ativos favoritos</span>
+              </div>
+
+              {watchlist.length ? (
+                <div className="grid gap-3 md:grid-cols-3">
+                  {watchlist.map((symbol) => {
+                    const marketItem = data.marketOverview.find((entry) => entry.symbol === symbol);
+                    if (!marketItem) return null;
+                    return (
+                      <div key={symbol} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="text-lg font-bold text-slate-100">{symbol}</div>
+                          <button onClick={() => toggleWatchlist(symbol)} className="text-xs text-amber-300">Remover</button>
+                        </div>
+                        <div className="mt-3 text-sm text-slate-300">Preço: {currency.format(marketItem.price)}</div>
+                        <div className={`mt-1 text-sm font-semibold ${marketItem.changePercent >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                          {marketItem.changePercent >= 0 ? "+" : ""}{marketItem.changePercent.toFixed(2)}%
+                        </div>
+                        <div className="mt-3 inline-flex rounded-full border border-cyan-500/40 bg-cyan-500/10 px-2.5 py-1 text-xs font-bold text-cyan-200">
+                          {marketItem.signal}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-700 p-6 text-center text-slate-300">
+                  Salve ativos para criar uma watchlist de execução.
+                </div>
+              )}
+            </section>
+          </>
+        )}
+      </div>
+    </main>
+  );
 }
+
+
+

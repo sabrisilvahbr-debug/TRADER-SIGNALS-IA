@@ -1,36 +1,32 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+import type { Metadata } from "next";
+import "./globals.css";
 
-:root {
-  color-scheme: dark;
+export const metadata: Metadata = {
+  title: "TRADER SIGNALS IA",
+  description: "Sistema moderno de sinais e inteligência para mercado financeiro",
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="pt-BR">
+      <body className="bg-slate-950 text-slate-50 antialiased">
+        <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+            <a href="/" className="text-lg font-black tracking-tight text-white">
+              TRADER SIGNALS IA
+            </a>
+            <nav className="flex items-center gap-4 text-sm text-slate-300">
+              <a href="/" className="transition hover:text-cyan-300">Home</a>
+              <a href="/dashboard" className="transition hover:text-cyan-300">Dashboard</a>
+              <a href="/watchlist" className="transition hover:text-cyan-300">Watchlist</a>
+            </nav>
+          </div>
+        </header>
+        {children}
+      </body>
+    </html>
+  );
 }
 
-html {
-  scroll-behavior: smooth;
-}
 
-body {
-  margin: 0;
-  min-height: 100vh;
-  background: #020617;
-  font-family: Arial, Helvetica, sans-serif;
-  color: #f8fafc;
-}
 
-* {
-  box-sizing: border-box;
-}
-
-::-webkit-scrollbar {
-  width: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: #0f172a;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 999px;
-}
