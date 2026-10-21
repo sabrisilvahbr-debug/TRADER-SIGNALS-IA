@@ -1,149 +1,175 @@
-import { getMarketOverview } from "@/lib/market";
-
-export type DashboardPayload = {
-  generatedAt: string;
-  marketSummary: string;
-  marketOverview: Array<{
-    symbol: string;
-    price: number;
-    changePercent: number;
-    volume: number;
-    high: number;
-    low: number;
-    signal: string;
-    trend: string;
-    bias: string;
-    confidence: number;
-    rsi: number;
-    ema9: number;
-    ema21: number;
-  }>;
-  ai: {
-    provider: string;
-    summary: string;
-    confidence: number;
-    tradePlan: string[];
-  };
-  portfolio: {
-    totalValue: number;
-    allocations: Array<{
-      symbol: string;
-      weight: number;
-      value: number;
-      color: string;
-    }>;
-  };
+type MarketPoint = {
+  symbol: string;
+  price: number;
+  changePercent: number;
+  volume: number;
+  high: number;
+  low: number;
+  signal: string;
+  trend: string;
+  bias: string;
+  confidence: number;
+  rsi: number;
+  ema9: number;
+  ema21: number;
 };
 
-function buildTradePlan(marketOverview: DashboardPayload["marketOverview"]) {
-  return marketOverview.map((item) => {
-    if (item.signal === "COMPRA") {
-      return `Priorizar entrada na ${item.symbol} com confirmação do suporte local e gestão de risco em 1,5% do portfólio.`;
-    }
-    if (item.signal === "VENDA") {
-      return `Reduzir exposição em ${item.symbol} e manter estratégia defensiva até reverter o impulso.`;
-    }
-    return `Monitorar ${item.symbol} com movimento lateral e aguardar breakout para confirmar tendência.`;
-  });
+const BINANCE_BASE_URL = process.env.BINANCE_BASE_URL || "https://api.binance.com";
+const DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"];
+
+function toNumber(value: number | string | undefined): number {
+  return Number(value ?? 0);
 }
 
-export async function buildDashboardPayload(): Promise<DashboardPayload> {
-  const market = await getMarketOverview();
-  const marketOverview = market.marketOverview;
+function calculateEMA(values: number[], period: number): number {
+  if (!values.length) return 0;
+  const multiplier = 2 / (period + 1);
+  let ema = values[0];
+  for (let index = 1; index < values.length; index += 1) {
+    ema = (values[index] - ema) * multiplier + ema;
+  }
+  return ema;
+}
 
-  const portfolioValue = Number(process.env.PORTFOLIO_CASH_USD || "50000");
-  const weights = [0.45, 0.35, 0.2];
-  const colors = ["#22d3ee", "#a78bfa", "#34d399"];
-  const allocations = marketOverview.map((item, index) => ({
-    symbol: item.symbol,
-    weight: Number((weights[index] * 100).toFixed(1)),
-    value: Number((portfolioValue * weights[index]).toFixed(2)),
-    color: colors[index],
-  }));
+function calculateRSI(closes: number[], period = 14): number {
+  if (closes.length < period + 1) return 50;
 
-  const avgConfidence = marketOverview.reduce((total, item) => total + item.confidence, 0) / marketOverview.length;
-  const buySignals = marketOverview.filter((item) => item.signal === "COMPRA").length;
-  const sellSignals = marketOverview.filter((item) => item.signal === "VENDA").length;
+  let gains = 0;
+  let losses = 0;
 
-  let aiSummary = `O mercado está com ${buySignals} sinais de compra e ${sellSignals} de venda. A inteligência técnica confirma que os ativos mais líquidos continuam respeitando o fluxo principal e a gestão de risco deve seguir ativa.`;
-  let provider = "local";
+  for (let index = 1; index <= period; index += 1) {
+    const delta = closes[index] - closes[index - 1];
+    if (delta >= 0) gains += delta;
+    else losses += Math.abs(delta);
+  }
 
-  const openAiKey = process.env.OPENAI_API_KEY;
-  const groqKey = process.env.GROQ_API_KEY;
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  if (avgLoss === 0) return 100;
 
-  if (openAiKey) {
-    provider = "openai";
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openAiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        temperature: 0.4,
-        messages: [
-          {
-            role: "system",
-            content: "Você é um analista de mercado profissional. Responda em português e forneça uma visão executiva clara.",
-          },
-          {
-            role: "user",
-            content: JSON.stringify(marketOverview),
-          },
-        ],
-      }),
-    });
+  const rs = avgGain / avgLoss;
+  return 100 - 100 / (1 + rs);
+}
 
-    if (response.ok) {
-      const result = await response.json();
-      const text = result.choices?.[0]?.message?.content || aiSummary;
-      aiSummary = text;
-    }
-  } else if (groqKey) {
-    provider = "groq";
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${groqKey}`,
-      },
-      body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        temperature: 0.4,
-        messages: [
-          {
-            role: "system",
-            content: "Você é um analista de mercado profissional. Responda em português e forneça conselhos práticos.",
-          },
-          {
-            role: "user",
-            content: JSON.stringify(marketOverview),
-          },
-        ],
-      }),
-    });
+function classifyTrend(
+  ema9: number,
+  ema21: number,
+  rsi: number,
+  changePercent: number
+): { trend: string; bias: string; signal: string; confidence: number } {
+  const bullishBias = ema9 > ema21 && rsi > 55 && changePercent > 0;
+  const bearishBias = ema9 < ema21 && rsi < 45 && changePercent < 0;
 
-    if (response.ok) {
-      const result = await response.json();
-      const text = result.choices?.[0]?.message?.content || aiSummary;
-      aiSummary = text;
-    }
+  if (bullishBias) {
+    return {
+      trend: "Alta",
+      bias: "Long",
+      signal: "COMPRA",
+      confidence: Math.min(92, 60 + Math.abs(changePercent) * 9 + (rsi - 50) * 0.9),
+    };
+  }
+
+  if (bearishBias) {
+    return {
+      trend: "Baixa",
+      bias: "Short",
+      signal: "VENDA",
+      confidence: Math.min(90, 60 + Math.abs(changePercent) * 8 + (50 - rsi) * 1.05),
+    };
   }
 
   return {
-    generatedAt: market.generatedAt,
-    marketSummary: market.marketSummary,
-    marketOverview,
-    ai: {
-      provider,
-      summary: aiSummary,
-      confidence: Number(avgConfidence.toFixed(0)),
-      tradePlan: buildTradePlan(marketOverview).slice(0, 3),
-    },
-    portfolio: {
-      totalValue: portfolioValue,
-      allocations,
-    },
+    trend: "Neutra",
+    bias: "Espera",
+    signal: "AGUARDE",
+    confidence: 51,
   };
 }
+
+export async function getMarketOverview() {
+  const symbols = (process.env.MARKET_SYMBOLS || DEFAULT_SYMBOLS.join(",")).split(",").map((item) => item.trim()).filter(Boolean);
+
+  const market = await Promise.all(
+    symbols.map(async (symbol) => {
+      try {
+        const tickerResponse = await fetch(`${BINANCE_BASE_URL}/api/v3/ticker/24hr?symbol=${symbol}`, { cache: "no-store" });
+        if (!tickerResponse.ok) {
+          throw new Error(`Erro ao consultar ${symbol}`);
+        }
+
+        const ticker = await tickerResponse.json();
+        const klineResponse = await fetch(
+          `${BINANCE_BASE_URL}/api/v3/klines?symbol=${symbol}&interval=1h&limit=200`,
+          { cache: "no-store" }
+        );
+
+        if (!klineResponse.ok) {
+          throw new Error(`Erro ao carregar candles de ${symbol}`);
+        }
+
+        const candles = await klineResponse.json();
+        const closes = candles.map((candle: unknown[]) => toNumber(candle[4]));
+        const price = toNumber(ticker.lastPrice);
+        const changePercent = toNumber(ticker.priceChangePercent);
+        const volume = toNumber(ticker.quoteVolume);
+        const high = toNumber(ticker.highPrice);
+        const low = toNumber(ticker.lowPrice);
+        const ema9 = calculateEMA(closes, 9);
+        const ema21 = calculateEMA(closes, 21);
+        const rsi = calculateRSI(closes, 14);
+        const classification = classifyTrend(ema9, ema21, rsi, changePercent);
+
+        return {
+          symbol,
+          price,
+          changePercent,
+          volume,
+          high,
+          low,
+          signal: classification.signal,
+          trend: classification.trend,
+          bias: classification.bias,
+          confidence: Number(classification.confidence.toFixed(0)),
+          rsi: Number(rsi.toFixed(1)),
+          ema9: Number(ema9.toFixed(2)),
+          ema21: Number(ema21.toFixed(2)),
+        } satisfies MarketPoint;
+      } catch (error) {
+        console.error(`FALHA NO ATIVO ${symbol}:`, error);
+        return {
+          symbol,
+          price: 0,
+          changePercent: 0,
+          volume: 0,
+          high: 0,
+          low: 0,
+          signal: "AGUARDE",
+          trend: "Neutra",
+          bias: "Espera",
+          confidence: 0,
+          rsi: 50,
+          ema9: 0,
+          ema21: 0,
+        } satisfies MarketPoint;
+      }
+    })
+  );
+
+  const validMarket = market.filter((item) => item.symbol && item.price > 0);
+  const averageChange = validMarket.length
+    ? validMarket.reduce((sum, item) => sum + item.changePercent, 0) / validMarket.length
+    : 0;
+
+  const summary =
+    averageChange >= 0
+      ? "O contexto de mercado está positivo com tendência favorável para ativos de alta liquidez."
+      : "O mercado está em fase defensiva com maior pressão sobre ativos de risco, exigindo entradas mais seletivas.";
+
+  return {
+    generatedAt: new Date().toISOString(),
+    marketSummary: summary,
+    marketOverview: validMarket,
+  };
+}
+
+export type MarketOverviewResponse = Awaited<ReturnType<typeof getMarketOverview>>;
