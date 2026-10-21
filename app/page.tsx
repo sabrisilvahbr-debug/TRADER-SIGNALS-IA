@@ -326,6 +326,3 @@ export default function TradingDashboard() {
     </main>
   );
 }
-
-
-

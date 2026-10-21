@@ -1,44 +1,50 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+# TRADER SIGNALS IA
 
-:root {
-  color-scheme: dark;
-}
+Sistema de sinais, IA e gestão de carteira para mercado financeiro com dashboard moderno, autenticação local e persistência em banco SQLite.
 
-html {
-  scroll-behavior: smooth;
-}
+## Stack
+- Next.js 14
+- React 18
+- Tailwind CSS
+- SQLite
+- Binance public API
+- OpenAI / Groq (opcional)
 
-body {
-  margin: 0;
-  min-height: 100vh;
-  background: #020617;
-  font-family: Arial, Helvetica, sans-serif;
-  color: #f8fafc;
-}
+## Requisitos
+- Node.js 18+
+- npm 9+
 
-* {
-  box-sizing: border-box;
-}
+## Instalação
 
-::-webkit-scrollbar {
-  width: 10px;
-}
+```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
 
-::-webkit-scrollbar-track {
-  background: #0f172a;
-}
+## Fluxo de uso
+1. Abra `/register` para criar uma conta.
+2. Faça login em `/login`.
+3. Acesse `/dashboard` para ver sinais reais do mercado.
+4. Salve ativos na watchlist e visualize sua carteira em `/portfolio`.
 
-::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 999px;
-}
+## Variáveis de ambiente
 
-button,
-a {
-  transition: all 0.2s ease;
-}
+```env
+OPENAI_API_KEY=
+GROQ_API_KEY=
+PORTFOLIO_CASH_USD=50000
+BINANCE_BASE_URL=https://api.binance.com
+MARKET_SYMBOLS=BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT
+AUTH_SECRET=trader-signals-ia-secret-dev
+DB_PATH=data/trader.db
+```
 
+## Deploy
+- Vercel: use `vercel.json` e configure as variáveis do ambiente.
+- Docker: use o Dockerfile incluso.
 
-
+## Observações
+- O sistema usa dados reais da API pública da Binance.
+- A IA é integrada apenas quando a chave real está presente.
+- O banco SQLite é usado para autenticação e carteira local.
