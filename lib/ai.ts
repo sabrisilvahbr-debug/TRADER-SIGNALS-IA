@@ -17,7 +17,7 @@ type MarketPoint = {
 const BINANCE_BASE_URL = process.env.BINANCE_BASE_URL || "https://api.binance.com";
 const DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"];
 
-function toNumber(value: number | string | undefined): number {
+function toNumber(value: unknown): number {
   return Number(value ?? 0);
 }
 

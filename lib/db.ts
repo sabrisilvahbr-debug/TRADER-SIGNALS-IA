@@ -9,29 +9,37 @@ if (dbDirectory) {
   fs.mkdirSync(dbDirectory, { recursive: true });
 }
 
-const db = new Database(dbFile);
+let database: Database.Database | undefined;
 
-db.pragma("journal_mode = WAL");
+function getDatabase() {
+  if (database) return database;
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  );
+  database = new Database(dbFile);
+  database.pragma("journal_mode = WAL");
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
 
-  CREATE TABLE IF NOT EXISTS positions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    symbol TEXT NOT NULL,
-    quantity REAL NOT NULL,
-    avg_price REAL NOT NULL,
-    side TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(user_id) REFERENCES users(id)
-  );
-`);
+    CREATE TABLE IF NOT EXISTS positions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      symbol TEXT NOT NULL,
+      quantity REAL NOT NULL,
+      avg_price REAL NOT NULL,
+      side TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+  `);
 
-export { db };
+  return database;
+}
+
+export const db = {
+  prepare: (...args: Parameters<Database.Database["prepare"]>) => getDatabase().prepare(...args),
+};

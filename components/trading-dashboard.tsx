@@ -1,50 +1,69 @@
-# TRADER SIGNALS IA
+"use client";
 
-Sistema de sinais, IA e gestão de carteira para mercado financeiro com dashboard moderno, autenticação local e persistência em banco SQLite.
+import { useEffect, useState } from "react";
 
-## Stack
-- Next.js 14
-- React 18
-- Tailwind CSS
-- SQLite
-- Binance public API
-- OpenAI / Groq (opcional)
+type MarketItem = {
+  symbol: string;
+  price: number;
+  changePercent: number;
+  signal: string;
+  trend: string;
+  confidence: number;
+};
 
-## Requisitos
-- Node.js 18+
-- npm 9+
+type SignalResponse = {
+  marketSummary: string;
+  marketOverview: MarketItem[];
+  generatedAt: string;
+};
 
-## Instalação
+export default function TradingDashboard() {
+  const [data, setData] = useState<SignalResponse | null>(null);
+  const [error, setError] = useState("");
 
-```bash
-npm install
-cp .env.example .env.local
-npm run dev
-```
+  useEffect(() => {
+    fetch("/api/signal", { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error("Falha ao consultar o mercado");
+        return response.json();
+      })
+      .then(setData)
+      .catch(() => setError("Não foi possível carregar os sinais agora."));
+  }, []);
 
-## Fluxo de uso
-1. Abra `/register` para criar uma conta.
-2. Faça login em `/login`.
-3. Acesse `/dashboard` para ver sinais reais do mercado.
-4. Salve ativos na watchlist e visualize sua carteira em `/portfolio`.
+  return (
+    <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-50 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8">
+          <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">Dashboard</p>
+          <h1 className="mt-2 text-3xl font-black">Sinais de mercado</h1>
+          <p className="mt-3 max-w-2xl text-slate-400">Acompanhe preço, tendência e confiança dos principais ativos.</p>
+        </div>
 
-## Variáveis de ambiente
-
-```env
-OPENAI_API_KEY=
-GROQ_API_KEY=
-PORTFOLIO_CASH_USD=50000
-BINANCE_BASE_URL=https://api.binance.com
-MARKET_SYMBOLS=BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT
-AUTH_SECRET=trader-signals-ia-secret-dev
-DB_PATH=data/trader.db
-```
-
-## Deploy
-- Vercel: use `vercel.json` e configure as variáveis do ambiente.
-- Docker: use o Dockerfile incluso.
-
-## Observações
-- O sistema usa dados reais da API pública da Binance.
-- A IA é integrada apenas quando a chave real está presente.
-- O banco SQLite é usado para autenticação e carteira local.
+        {error && <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-rose-200">{error}</div>}
+        {!data && !error && <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 text-slate-300">Carregando sinais...</div>}
+        {data && (
+          <>
+            <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-5 text-slate-300">{data.marketSummary}</div>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {data.marketOverview.map((item) => (
+                <article key={item.symbol} className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-black">{item.symbol}</h2>
+                    <span className="rounded-full border border-cyan-500/40 bg-cyan-500/10 px-2.5 py-1 text-xs font-bold text-cyan-200">{item.signal}</span>
+                  </div>
+                  <p className="mt-5 text-2xl font-bold">US$ {item.price.toLocaleString("en-US", { maximumFractionDigits: 2 })}</p>
+                  <div className="mt-4 flex justify-between text-sm text-slate-400">
+                    <span>{item.trend}</span>
+                    <span className={item.changePercent >= 0 ? "text-emerald-300" : "text-rose-300"}>{item.changePercent >= 0 ? "+" : ""}{item.changePercent.toFixed(2)}%</span>
+                  </div>
+                  <div className="mt-4 text-xs text-slate-500">Confiança: {item.confidence}%</div>
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </main>
+  );
+}

@@ -1,5 +1,5 @@
-OPENAI_API_KEY=
-GROQ_API_KEY=
-PORTFOLIO_CASH_USD=50000
-BINANCE_BASE_URL=https://api.binance.com
-MARKET_SYMBOLS=BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  return NextResponse.json({ status: "ok", service: "trader-signals-ai" });
+}
