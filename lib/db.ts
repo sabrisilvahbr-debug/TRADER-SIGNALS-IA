@@ -2,11 +2,14 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 
-const dbDirectory = path.join(process.cwd(), "data");
-fs.mkdirSync(dbDirectory, { recursive: true });
+const dbFile = process.env.DB_PATH || path.join("/tmp", "trader.db");
+const dbDirectory = path.dirname(dbFile);
 
-const dbPath = path.join(dbDirectory, "trader.db");
-const db = new Database(dbPath);
+if (dbDirectory) {
+  fs.mkdirSync(dbDirectory, { recursive: true });
+}
+
+const db = new Database(dbFile);
 
 db.pragma("journal_mode = WAL");
 
