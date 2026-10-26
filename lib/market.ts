@@ -16,7 +16,7 @@ type MarketPoint = {
 
 const BINANCE_BASE_URL = process.env.BINANCE_BASE_URL || "https://api.binance.com";
 
-function toNumber(value: number | string | undefined): number {
+function toNumber(value: unknown): number {
   return Number(value ?? 0);
 }
 

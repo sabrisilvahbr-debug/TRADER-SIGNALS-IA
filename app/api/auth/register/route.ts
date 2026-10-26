@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 
 import { verifySession } from "@/lib/auth";
 
-export function getSessionUser() {
+function getSessionUser() {
   try {
     const cookieStore = cookies();
     const token = cookieStore.get("trader_session")?.value;

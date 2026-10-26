@@ -1,63 +1,21 @@
-import { NextResponse } from "next/server";
+"use client";
 
-import { db } from "@/lib/db";
-import { getSessionUser } from "@/lib/session";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
-export async function GET() {
-  const user = getSessionUser();
-  if (!user) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+export function AuthForm({ mode }: { mode: "login" | "register" }) {
+  const router = useRouter();
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (event.nativeEvent && "isComposing" in event.nativeEvent && event.nativeEvent.isComposing) return;
+    setLoading(true); setError("");
+    const data = Object.fromEntries(new FormData(event.currentTarget));
+    const response = await fetch(`/api/auth/${mode}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    const result = await response.json();
+    if (!response.ok) { setError(result.error || "Não foi possível continuar."); setLoading(false); return; }
+    router.push("/dashboard"); router.refresh();
   }
-
-  const rows = db
-    .prepare("SELECT id, symbol, quantity, avg_price, side, created_at FROM positions WHERE user_id = ? ORDER BY created_at DESC")
-    .all(user.userId) as Array<{
-      id: number;
-      symbol: string;
-      quantity: number;
-      avg_price: number;
-      side: string;
-      created_at: string;
-    }>;
-
-  return NextResponse.json({ positions: rows });
-}
-
-export async function POST(request: Request) {
-  const user = getSessionUser();
-  if (!user) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  }
-
-  try {
-    const body = await request.json();
-    const symbol = String(body.symbol || "").trim().toUpperCase();
-    const quantity = Number(body.quantity || 0);
-    const avgPrice = Number(body.avgPrice || 0);
-    const side = String(body.side || "buy").toLowerCase();
-
-    if (!symbol || !quantity || !avgPrice || !["buy", "sell"].includes(side)) {
-      return NextResponse.json({ error: "Dados da posição inválidos." }, { status: 400 });
-    }
-
-    const result = db
-      .prepare("INSERT INTO positions (user_id, symbol, quantity, avg_price, side) VALUES (?, ?, ?, ?, ?)")
-      .run(user.userId, symbol, quantity, avgPrice, side);
-
-    const position = db
-      .prepare("SELECT id, symbol, quantity, avg_price, side, created_at FROM positions WHERE id = ?")
-      .get(result.lastInsertRowid) as {
-        id: number;
-        symbol: string;
-        quantity: number;
-        avg_price: number;
-        side: string;
-        created_at: string;
-      };
-
-    return NextResponse.json({ ok: true, position });
-  } catch (error) {
-    console.error("Erro ao registrar posição:", error);
-    return NextResponse.json({ error: "Falha ao salvar a posição." }, { status: 500 });
-  }
+  return <form onSubmit={submit} className="space-y-4"><input name="name" placeholder="Nome" className={mode === "register" ? "w-full rounded border p-3" : "hidden"} required={mode === "register"} /><input name="email" type="email" placeholder="E-mail" className="w-full rounded border p-3" required /><input name="password" type="password" placeholder="Senha" className="w-full rounded border p-3" required minLength={6} /><button disabled={loading} className="w-full rounded bg-cyan-500 p-3 font-semibold text-slate-950">{loading ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}</button>{error && <p className="text-sm text-red-500">{error}</p>}</form>;
 }

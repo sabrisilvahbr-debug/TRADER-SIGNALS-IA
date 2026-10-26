@@ -1,32 +1,33 @@
-import type { Metadata } from "next";
-import "./globals.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-export const metadata: Metadata = {
-  title: "TRADER SIGNALS IA",
-  description: "Sistema moderno de sinais e inteligência para mercado financeiro",
-};
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="pt-BR">
-      <body className="bg-slate-950 text-slate-50 antialiased">
-        <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-            <a href="/" className="text-lg font-black tracking-tight text-white">
-              TRADER SIGNALS IA
-            </a>
-            <nav className="flex items-center gap-4 text-sm text-slate-300">
-              <a href="/" className="transition hover:text-cyan-300">Home</a>
-              <a href="/dashboard" className="transition hover:text-cyan-300">Dashboard</a>
-              <a href="/watchlist" className="transition hover:text-cyan-300">Watchlist</a>
-            </nav>
-          </div>
-        </header>
-        {children}
-      </body>
-    </html>
-  );
+:root {
+  color-scheme: dark;
 }
 
+* {
+  box-sizing: border-box;
+}
 
+html {
+  background: #020617;
+}
 
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #020617;
+  color: #f8fafc;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
